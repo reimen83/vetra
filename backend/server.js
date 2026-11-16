@@ -9,7 +9,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3001);
 const USER = process.env.VETRA_USER || "creators";
 const PASS = process.env.VETRA_PASS || "creators2026";
+const PIX_KEY = process.env.VETRA_PIX_KEY || "johndoe@example.com";
+const PIX_NAME = process.env.VETRA_PIX_NAME || "Reinaldo Honorio Neto";
+const PIX_PRICE = Number(process.env.VETRA_PIX_PRICE || 17);
 const sessions = new Map();
+const licenses = new Map();
 
 function json(res, status, body) {
   const payload = JSON.stringify(body);
@@ -49,6 +53,10 @@ function requireAuth(req, res) {
     json(res, 401, { error: "Sessão expirada. Entre novamente." });
     return false;
   }
+  if (!sessions.get(token).licenseActive) {
+    json(res, 403, { error: "Acesso restrito. Faça o pagamento da licença vitalícia para liberar todas as funções." });
+    return false;
+  }
   return true;
 }
 
@@ -77,13 +85,44 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
+    if (req.method === "GET" && url.pathname === "/api/license/config") {
+      return json(res, 200, {
+        active: false,
+        price: PIX_PRICE,
+        pixKey: PIX_KEY,
+        pixName: PIX_NAME,
+        currency: "BRL",
+        message: "Licença vitalícia do Vetra por R$ 17,00. A compra libera acesso completo imediatamente."
+      });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/license/activate") {
+      const body = await parseBody(req);
+      const confirmed = body.confirmed === true || body.status === "approved" || body.status === "paid";
+      if (!confirmed) return json(res, 400, { error: "Pagamento não confirmado." });
+      const ref = String(body.reference || "vetra-license").slice(0, 64);
+      const payer = String(body.customer || "demo-user").slice(0, 64);
+      const now = Date.now();
+      licenses.set(ref, { active: true, paidAt: now, payer, price: PIX_PRICE, pixKey: PIX_KEY });
+      licenses.set(payer, { active: true, paidAt: now, payer, price: PIX_PRICE, pixKey: PIX_KEY });
+      const token = cookieOf(req, "vetra_session");
+      if (token && sessions.has(token)) {
+        sessions.set(token, { ...sessions.get(token), licenseActive: true, activeLicense: true, paidAt: now });
+      }
+      return json(res, 200, { ok: true, active: true, price: PIX_PRICE, reference: ref });
+    }
+
     if (req.method === "POST" && url.pathname === "/api/login") {
       const body = await parseBody(req);
       const user = String(body.user || body.username || "").trim();
       const pass = String(body.password || "").trim();
+      const hasLicense = licenses.has(user) || user === USER && pass === PASS && licenses.has("creator-license");
       if (user === USER && pass === PASS) {
+        if (!hasLicense) {
+          return json(res, 403, { error: "Acesso restrito. Efetue a compra da licença vitálícia antes de entrar." });
+        }
         const token = crypto.randomUUID();
-        sessions.set(token, { user, at: Date.now() });
+        sessions.set(token, { user, at: Date.now(), licenseActive: true });
         res.writeHead(200, {
           "Content-Type": "application/json; charset=utf-8",
           "Set-Cookie": `vetra_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`
@@ -106,7 +145,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/session") {
       const token = cookieOf(req, "vetra_session");
       if (!token || !sessions.has(token)) return json(res, 401, { ok: false });
-      return json(res, 200, { ok: true, user: sessions.get(token).user });
+      return json(res, 200, { ok: true, user: sessions.get(token).user, licenseActive: sessions.get(token).licenseActive === true });
     }
 
     if (req.method === "POST" && url.pathname === "/api/search") {
