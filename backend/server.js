@@ -9,7 +9,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3001);
 const USER = process.env.VETRA_USER || "creators";
 const PASS = process.env.VETRA_PASS || "creators2026";
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const sessions = new Map();
+
+function pruneSessions() {
+  const now = Date.now();
+  for (const [token, session] of sessions.entries()) {
+    if (now - Number(session?.at || now) > SESSION_TTL_MS) {
+      sessions.delete(token);
+    }
+  }
+}
 
 function json(res, status, body) {
   const payload = JSON.stringify(body);
@@ -44,6 +54,7 @@ function cookieOf(req, name) {
 }
 
 function requireAuth(req, res) {
+  pruneSessions();
   const token = cookieOf(req, "vetra_session") || (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   if (!token || !sessions.has(token)) {
     json(res, 401, { error: "Sessão expirada. Entre novamente." });
@@ -81,7 +92,11 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const user = String(body.user || body.username || "").trim();
       const pass = String(body.password || "").trim();
+      if (!user || !pass) {
+        return json(res, 400, { error: "Informe usuário e senha." });
+      }
       if (user === USER && pass === PASS) {
+        pruneSessions();
         const token = crypto.randomUUID();
         sessions.set(token, { user, at: Date.now() });
         res.writeHead(200, {
@@ -104,6 +119,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/session") {
+      pruneSessions();
       const token = cookieOf(req, "vetra_session");
       if (!token || !sessions.has(token)) return json(res, 401, { ok: false });
       return json(res, 200, { ok: true, user: sessions.get(token).user });
@@ -112,13 +128,20 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/search") {
       if (!requireAuth(req, res)) return;
       const body = await parseBody(req);
+      const query = String(body.query || "").trim();
+      const location = String(body.location || "").trim();
+      const limit = Number(body.limit ?? 40);
+      const minScore = Number(body.minScore ?? 0);
+      if (!query) {
+        return json(res, 400, { error: "Informe uma busca válida." });
+      }
       const data = await deepSearch({
-        query: body.query,
-        location: body.location,
+        query,
+        location,
         onlyNoWebsite: Boolean(body.onlyNoWebsite),
         hasPhoneOnly: Boolean(body.hasPhoneOnly),
-        minScore: Number(body.minScore || 0),
-        limit: Math.min(60, Number(body.limit || 40))
+        minScore: Number.isFinite(minScore) ? minScore : 0,
+        limit: Number.isFinite(limit) && limit > 0 ? Math.min(60, limit) : 40
       });
       return json(res, 200, data);
     }
