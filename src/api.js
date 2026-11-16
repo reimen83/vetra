@@ -14,5 +14,7 @@ export const api = {
   logout: () => request("/api/logout", { method: "POST" }),
   session: () => request("/api/session"),
   search: (payload) => request("/api/search", { method: "POST", body: JSON.stringify(payload) }),
-  whatsapp: (phone, name) => request("/api/whatsapp", { method: "POST", body: JSON.stringify({ phone, name }) })
+  whatsapp: (phone, name) => request("/api/whatsapp", { method: "POST", body: JSON.stringify({ phone, name }) }),
+  licenseConfig: () => request("/api/license/config"),
+  activateLicense: (payload) => request("/api/license/activate", { method: "POST", body: JSON.stringify(payload) })
 };
