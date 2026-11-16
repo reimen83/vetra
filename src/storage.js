@@ -5,7 +5,21 @@ const PROJECTS = "vetra.site-projects.v1";
 const AUTH = "vetra.auth.v1";
 const STUDIO_FOCUS = "vetra.studio-focus.v1";
 
+function hasStorage() {
+  try {
+    const probe = "__vetra_probe__";
+    localStorage.setItem(probe, probe);
+    localStorage.removeItem(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const storageEnabled = hasStorage();
+
 function read(key, fallback) {
+  if (!storageEnabled) return fallback;
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : fallback;
@@ -15,7 +29,12 @@ function read(key, fallback) {
 }
 
 function write(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+  if (!storageEnabled) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Sem armazenamento disponível, ignora para manter a UX funcional.
+  }
 }
 
 export function loadLeads() {
@@ -37,7 +56,7 @@ export function setMeetingDraft(data) {
 }
 export function consumeMeetingDraft() {
   const data = read(DRAFT, null);
-  localStorage.removeItem(DRAFT);
+  if (storageEnabled) localStorage.removeItem(DRAFT);
   return data;
 }
 
@@ -52,7 +71,7 @@ export function setStudioFocus(id) {
 }
 export function consumeStudioFocus() {
   const data = read(STUDIO_FOCUS, null);
-  localStorage.removeItem(STUDIO_FOCUS);
+  if (storageEnabled) localStorage.removeItem(STUDIO_FOCUS);
   return data?.id || null;
 }
 
@@ -60,7 +79,7 @@ export function setAuth(user) {
   write(AUTH, { user, at: Date.now() });
 }
 export function clearAuth() {
-  localStorage.removeItem(AUTH);
+  if (storageEnabled) localStorage.removeItem(AUTH);
 }
 export function getAuth() {
   return read(AUTH, null);
