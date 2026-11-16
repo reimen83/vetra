@@ -4,6 +4,10 @@ const DRAFT = "vetra.meeting-draft.v1";
 const PROJECTS = "vetra.site-projects.v1";
 const AUTH = "vetra.auth.v1";
 const STUDIO_FOCUS = "vetra.studio-focus.v1";
+const LICENSE = "vetra.license.v1";
+
+export const LICENSE_PRICE = 17;
+export const DEFAULT_PIX_KEY = "seu-pix@exemplo.com";
 
 function hasStorage() {
   try {
@@ -33,8 +37,40 @@ function write(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    // Sem armazenamento disponível, ignora para manter a UX funcional.
+    // sem armazenamento disponível, ignora para manter a UX funcional.
   }
+}
+
+export function getLicenseState() {
+  return read(LICENSE, {
+    active: false,
+    price: LICENSE_PRICE,
+    pixKey: DEFAULT_PIX_KEY,
+    paidAt: null,
+    activatedAt: null,
+    customer: null
+  });
+}
+
+export function setLicenseState(next) {
+  const state = {
+    active: Boolean(next?.active),
+    price: LICENSE_PRICE,
+    pixKey: next?.pixKey || DEFAULT_PIX_KEY,
+    paidAt: next?.paidAt || Date.now(),
+    activatedAt: next?.activatedAt || Date.now(),
+    customer: next?.customer || null
+  };
+  write(LICENSE, state);
+  return state;
+}
+
+export function clearLicenseState() {
+  if (storageEnabled) localStorage.removeItem(LICENSE);
+}
+
+export function isLicenseActive() {
+  return Boolean(getLicenseState()?.active);
 }
 
 export function loadLeads() {
